@@ -35,5 +35,20 @@ export {
   getRowspanGroups,
 } from './heuristics.js';
 
+// Element handlers
+export type { ElementHandler, SplitPoint } from './handlers/base.js';
+export {
+  BaseHandler,
+  AtomicHandler,
+  ProseHandler,
+  CodeHandler,
+  HeadingHandler,
+  TableHandler,
+  ListHandler,
+  ContainerHandler,
+  HandlerRegistry,
+  getHandlerRegistry,
+} from './handlers/index.js';
+
 // Web Component
 export { FolioElement } from './folio-element.js';

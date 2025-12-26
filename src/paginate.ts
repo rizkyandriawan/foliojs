@@ -8,8 +8,8 @@ import type {
   Orientation,
 } from './types.js';
 import { DEFAULT_OPTIONS, PAGE_SIZES } from './types.js';
-import { measureBlocks, groupConsecutiveHeadings } from './measure.js';
-import { checkFit, checkHeadingMinContent } from './heuristics.js';
+import { getBlockChildren, groupConsecutiveHeadings } from './measure.js';
+import { getHandlerRegistry } from './handlers/index.js';
 
 /**
  * Resolve options with defaults
@@ -128,9 +128,17 @@ export async function paginate(
   options: PaginateOptions = {}
 ): Promise<PaginationResult> {
   const resolved = resolveOptions(options);
+  const registry = getHandlerRegistry();
 
-  // Measure all blocks
-  let blocks = measureBlocks(container, resolved);
+  // Measure all blocks using handler registry
+  const children = getBlockChildren(container);
+  let blocks: MeasuredBlock[] = [];
+  for (const child of children) {
+    const measured = registry.measure(child, resolved);
+    if (measured) {
+      blocks.push(measured);
+    }
+  }
 
   // Group consecutive headings
   blocks = groupConsecutiveHeadings(blocks);
@@ -162,54 +170,72 @@ export async function paginate(
     const totalHeight = block.height + block.marginTop + block.marginBottom;
 
     // Check fit
-    const fitResult = checkFit(block, remaining, resolved);
-
-    if (fitResult.fits) {
+    if (totalHeight <= remaining) {
       // Block fits entirely
       addFragment(currentPage, fullFragment(block));
       remaining -= totalHeight;
-    } else if (fitResult.canSplit && fitResult.splitPoint) {
-      // Split the block
-      const sp = fitResult.splitPoint;
+    } else if (block.canSplit) {
+      // Try to find a split point using handler
+      const splitPoint = registry.findSplitPoint(block, remaining, resolved);
 
-      if (sp.type === 'line') {
-        // Line-based split
-        addFragment(
-          currentPage,
-          partialFragment(block, 0, sp.heightBefore, 0, sp.index)
-        );
+      if (splitPoint) {
+        const sp = splitPoint;
 
-        pages.push(currentPage);
-        currentPage = createPage(pages.length, resolved.orientation);
-        remaining = resolved.contentHeight;
+        if (sp.type === 'line') {
+          // Line-based split
+          addFragment(
+            currentPage,
+            partialFragment(block, 0, sp.heightBefore, 0, sp.index)
+          );
 
-        addFragment(
-          currentPage,
-          partialFragment(block, sp.heightBefore, sp.heightAfter, sp.index, block.lineCount)
-        );
-        remaining -= sp.heightAfter;
+          pages.push(currentPage);
+          currentPage = createPage(pages.length, resolved.orientation);
+          remaining = resolved.contentHeight;
+
+          addFragment(
+            currentPage,
+            partialFragment(block, sp.heightBefore, sp.heightAfter, sp.index, block.lineCount)
+          );
+          remaining -= sp.heightAfter;
+        } else {
+          // Child-based split (container, list, table)
+          // Add first part to current page
+          const firstPart: MeasuredBlock = {
+            ...block,
+            children: block.children?.slice(0, sp.index),
+            height: sp.heightBefore,
+          };
+          addFragment(currentPage, fullFragment(firstPart));
+
+          pages.push(currentPage);
+          currentPage = createPage(pages.length, resolved.orientation);
+          remaining = resolved.contentHeight;
+
+          // Add second part to new page
+          const secondPart: MeasuredBlock = {
+            ...block,
+            children: block.children?.slice(sp.index),
+            height: sp.heightAfter,
+          };
+
+          // For tables: only include thead in continuation if repeatTableHeader is true
+          if (block.type === 'table' && !resolved.repeatTableHeader) {
+            secondPart.thead = undefined;
+            secondPart.theadHeight = undefined;
+          }
+
+          addFragment(currentPage, fullFragment(secondPart));
+          remaining -= sp.heightAfter;
+        }
       } else {
-        // Child-based split (container)
-        // Add first part to current page
-        const firstPart: MeasuredBlock = {
-          ...block,
-          children: block.children?.slice(0, sp.index),
-          height: sp.heightBefore,
-        };
-        addFragment(currentPage, fullFragment(firstPart));
-
-        pages.push(currentPage);
-        currentPage = createPage(pages.length, resolved.orientation);
-        remaining = resolved.contentHeight;
-
-        // Add second part to new page
-        const secondPart: MeasuredBlock = {
-          ...block,
-          children: block.children?.slice(sp.index),
-          height: sp.heightAfter,
-        };
-        addFragment(currentPage, fullFragment(secondPart));
-        remaining -= sp.heightAfter;
+        // Can't split, move to next page
+        if (currentPage.fragments.length > 0) {
+          pages.push(currentPage);
+          currentPage = createPage(pages.length, resolved.orientation);
+          remaining = resolved.contentHeight;
+        }
+        addFragment(currentPage, fullFragment(block));
+        remaining -= totalHeight;
       }
     } else {
       // Can't split, move to next page
@@ -242,4 +268,35 @@ export async function paginate(
     totalPages: pages.length,
     options: resolved,
   };
+}
+
+/**
+ * Check if heading group needs min content after it
+ * Returns false if heading should move to next page
+ */
+function checkHeadingMinContent(
+  block: MeasuredBlock,
+  nextBlock: MeasuredBlock | undefined,
+  remaining: number,
+  options: ResolvedOptions
+): boolean {
+  if (!block.isHeading) return true;
+  if (!nextBlock) return true;
+
+  const headingHeight = block.height + block.marginTop;
+  const spaceAfterHeading = remaining - headingHeight;
+
+  // If next block can't split, require the whole block to fit
+  if (!nextBlock.canSplit) {
+    const nextHeight = nextBlock.height + nextBlock.marginTop;
+    return nextHeight <= spaceAfterHeading;
+  }
+
+  // For splittable blocks, require at least minContentLines or 1/3 of the block
+  const lineHeight = nextBlock.lineHeight ?? 20;
+  const minByLines = options.minContentLines * lineHeight;
+  const minByRatio = nextBlock.height / 3;
+  const minContent = Math.max(minByLines, minByRatio);
+
+  return minContent <= spaceAfterHeading;
 }

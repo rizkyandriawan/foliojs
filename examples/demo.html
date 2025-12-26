@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Folio Demo</title>
+  <style>
+    body {
+      font-family: Georgia, serif;
+      margin: 0;
+      background: #1a1a2e;
+    }
+
+    .toolbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: #16213e;
+      padding: 12px 20px;
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      z-index: 100;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+
+    .toolbar h1 {
+      margin: 0;
+      font-size: 16px;
+      color: #e94560;
+    }
+
+    .toolbar button {
+      padding: 6px 12px;
+      border-radius: 4px;
+      border: 1px solid #444;
+      background: #0f3460;
+      color: #fff;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .toolbar button:hover {
+      background: #1a4a7a;
+    }
+
+    .toolbar .info {
+      margin-left: auto;
+      color: #888;
+      font-size: 13px;
+    }
+
+    #container {
+      margin-top: 60px;
+    }
+
+    folio-pages {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 11pt;
+      line-height: 1.7;
+      color: #333;
+    }
+
+    folio-pages h1 {
+      font-size: 24pt;
+      font-weight: 700;
+      color: #1a1a1a;
+      margin-bottom: 0.5em;
+      margin-top: 0;
+      border-bottom: 2px solid #3b82f6;
+      padding-bottom: 0.3em;
+    }
+
+    folio-pages h2 {
+      font-size: 16pt;
+      font-weight: 600;
+      color: #2563eb;
+      margin-top: 1.5em;
+      margin-bottom: 0.6em;
+    }
+
+    folio-pages h3 {
+      font-size: 13pt;
+      font-weight: 600;
+      color: #374151;
+      margin-top: 1.2em;
+      margin-bottom: 0.4em;
+    }
+
+    folio-pages p {
+      margin-bottom: 1em;
+    }
+
+    folio-pages code {
+      font-family: 'Fira Code', 'Consolas', monospace;
+      background: #f3f4f6;
+      padding: 0.15em 0.4em;
+      border-radius: 4px;
+      font-size: 0.9em;
+    }
+
+    folio-pages pre {
+      background: #1f2937;
+      color: #f3f4f6;
+      padding: 1em;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin: 1em 0;
+      font-family: 'Fira Code', 'Consolas', monospace;
+      font-size: 10pt;
+    }
+
+    folio-pages pre code {
+      background: none;
+      padding: 0;
+      color: inherit;
+    }
+
+    folio-pages blockquote {
+      border-left: 4px solid #3b82f6;
+      padding-left: 1em;
+      margin: 1em 0;
+      color: #6b7280;
+      font-style: italic;
+    }
+
+    folio-pages ul, folio-pages ol {
+      margin: 1em 0;
+      padding-left: 2em;
+    }
+
+    folio-pages li {
+      margin-bottom: 0.4em;
+    }
+
+    folio-pages table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1em 0;
+    }
+
+    folio-pages th, folio-pages td {
+      border: 1px solid #d1d5db;
+      padding: 0.5em 0.75em;
+      text-align: left;
+    }
+
+    folio-pages th {
+      background: #f3f4f6;
+      font-weight: 600;
+    }
+
+    folio-pages hr {
+      border: none;
+      border-top: 1px solid #e5e7eb;
+      margin: 2em 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <h1>Folio Demo</h1>
+    <button id="exportBtn">Export HTML</button>
+    <span class="info" id="pageInfo">Loading...</span>
+  </div>
+
+  <div id="container">
+    <folio-pages page-size="A4" id="folio">
+      <h1>Introduction to Algorithms</h1>
+      <p><strong>A comprehensive overview of fundamental algorithms and data structures</strong></p>
+
+      <h2>What is an Algorithm?</h2>
+      <p>An algorithm is a finite sequence of well-defined instructions, typically used to solve a class of specific problems or to perform a computation. Algorithms are used as specifications for performing calculations and data processing.</p>
+
+      <blockquote>
+        <p>"An algorithm must be seen to be believed." - Donald Knuth</p>
+      </blockquote>
+
+      <p>More advanced algorithms can use conditionals to divert the code execution through various routes and deduce valid inferences, achieving automation eventually.</p>
+
+      <h2>Time Complexity</h2>
+      <p>Time complexity is the computational complexity that describes the amount of computer time it takes to run an algorithm. Time complexity is commonly estimated by counting the number of elementary operations performed by the algorithm.</p>
+
+      <h3>Big O Notation</h3>
+      <p>Big O notation is a mathematical notation that describes the limiting behavior of a function when the argument tends towards a particular value or infinity. In computer science, it is used to classify algorithms according to how their run time or space requirements grow as the input size grows.</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Notation</th>
+            <th>Name</th>
+            <th>Example</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>O(1)</td>
+            <td>Constant</td>
+            <td>Array access</td>
+          </tr>
+          <tr>
+            <td>O(log n)</td>
+            <td>Logarithmic</td>
+            <td>Binary search</td>
+          </tr>
+          <tr>
+            <td>O(n)</td>
+            <td>Linear</td>
+            <td>Linear search</td>
+          </tr>
+          <tr>
+            <td>O(n log n)</td>
+            <td>Linearithmic</td>
+            <td>Merge sort</td>
+          </tr>
+          <tr>
+            <td>O(n²)</td>
+            <td>Quadratic</td>
+            <td>Bubble sort</td>
+          </tr>
+          <tr>
+            <td>O(2ⁿ)</td>
+            <td>Exponential</td>
+            <td>Recursive Fibonacci</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Sorting Algorithms</h2>
+      <p>A sorting algorithm is an algorithm that puts elements of a list into an order. The most frequently used orders are numerical order and lexicographical order, and either ascending or descending.</p>
+
+      <h3>Quick Sort</h3>
+      <p>Quicksort is an efficient, general-purpose sorting algorithm. It was developed by British computer scientist Tony Hoare in 1959 and published in 1961. It is still a commonly used algorithm for sorting.</p>
+
+      <pre><code>function quickSort(arr, low, high) {
+  if (low < high) {
+    const pi = partition(arr, low, high);
+    quickSort(arr, low, pi - 1);
+    quickSort(arr, pi + 1, high);
+  }
+  return arr;
+}
+
+function partition(arr, low, high) {
+  const pivot = arr[high];
+  let i = low - 1;
+
+  for (let j = low; j < high; j++) {
+    if (arr[j] < pivot) {
+      i++;
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+  }
+
+  [arr[i + 1], arr[high]] = [arr[high], arr[i + 1]];
+  return i + 1;
+}</code></pre>
+
+      <h3>Merge Sort</h3>
+      <p>Merge sort is an efficient, stable sorting algorithm that uses a divide-and-conquer approach. It divides the input array into two halves, recursively sorts them, and then merges the sorted halves.</p>
+
+      <pre><code>function mergeSort(arr) {
+  if (arr.length <= 1) return arr;
+
+  const mid = Math.floor(arr.length / 2);
+  const left = mergeSort(arr.slice(0, mid));
+  const right = mergeSort(arr.slice(mid));
+
+  return merge(left, right);
+}
+
+function merge(left, right) {
+  const result = [];
+  let i = 0, j = 0;
+
+  while (i < left.length && j < right.length) {
+    if (left[i] <= right[j]) {
+      result.push(left[i++]);
+    } else {
+      result.push(right[j++]);
+    }
+  }
+
+  return result.concat(left.slice(i)).concat(right.slice(j));
+}</code></pre>
+
+      <h2>Data Structures</h2>
+      <p>A data structure is a data organization, management, and storage format that is usually chosen for efficient access to data. More precisely, a data structure is a collection of data values, the relationships among them, and the functions or operations that can be applied to the data.</p>
+
+      <h3>Common Data Structures</h3>
+      <ul>
+        <li><strong>Arrays</strong> - A collection of elements identified by index or key</li>
+        <li><strong>Linked Lists</strong> - A linear collection of elements where each element points to the next</li>
+        <li><strong>Stacks</strong> - A LIFO (Last In, First Out) structure</li>
+        <li><strong>Queues</strong> - A FIFO (First In, First Out) structure</li>
+        <li><strong>Trees</strong> - A hierarchical structure with a root node and child nodes</li>
+        <li><strong>Graphs</strong> - A collection of nodes connected by edges</li>
+        <li><strong>Hash Tables</strong> - A structure that maps keys to values using a hash function</li>
+      </ul>
+
+      <h3>Binary Search Tree</h3>
+      <p>A binary search tree (BST) is a rooted binary tree data structure with the key of each internal node being greater than all the keys in the respective node's left subtree and less than the ones in its right subtree.</p>
+
+      <pre><code>class Node {
+  constructor(value) {
+    this.value = value;
+    this.left = null;
+    this.right = null;
+  }
+}
+
+class BinarySearchTree {
+  constructor() {
+    this.root = null;
+  }
+
+  insert(value) {
+    const newNode = new Node(value);
+    if (!this.root) {
+      this.root = newNode;
+      return this;
+    }
+
+    let current = this.root;
+    while (true) {
+      if (value < current.value) {
+        if (!current.left) {
+          current.left = newNode;
+          return this;
+        }
+        current = current.left;
+      } else {
+        if (!current.right) {
+          current.right = newNode;
+          return this;
+        }
+        current = current.right;
+      }
+    }
+  }
+}</code></pre>
+
+      <h2>Graph Algorithms</h2>
+      <p>Graph algorithms are a set of instructions that traverse (visit nodes of) a graph. Some algorithms are used to find a specific node or the path between two given nodes.</p>
+
+      <h3>Breadth-First Search</h3>
+      <p>Breadth-first search (BFS) is an algorithm for searching a tree data structure for a node that satisfies a given property. It starts at the tree root and explores all nodes at the present depth prior to moving on to the nodes at the next depth level.</p>
+
+      <h3>Depth-First Search</h3>
+      <p>Depth-first search (DFS) is an algorithm for traversing or searching tree or graph data structures. The algorithm starts at the root node and explores as far as possible along each branch before backtracking.</p>
+
+      <hr>
+
+      <h2>Conclusion</h2>
+      <p>Understanding algorithms and data structures is fundamental to computer science and software engineering. These concepts form the building blocks for solving complex computational problems efficiently.</p>
+
+      <p>The choice of algorithm and data structure can significantly impact the performance of a program. As Donald Knuth famously stated, "Premature optimization is the root of all evil." However, having a solid understanding of algorithmic complexity helps make informed decisions when performance matters.</p>
+
+      <hr>
+      <p><em>This document was created to demonstrate the Folio pagination library.</em></p>
+    </folio-pages>
+  </div>
+
+  <script type="module">
+    import '../dist/index.js';
+
+    const folio = document.getElementById('folio');
+    const pageInfo = document.getElementById('pageInfo');
+    const exportBtn = document.getElementById('exportBtn');
+
+    folio.addEventListener('paginated', (e) => {
+      pageInfo.textContent = `${e.detail.totalPages} pages`;
+    });
+
+    exportBtn.addEventListener('click', () => {
+      const html = folio.toPrintHTML({ title: 'Introduction to Algorithms' });
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'algorithms.html';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  </script>
+</body>
+</html>

@@ -8,7 +8,8 @@ export type ElementType =
   | 'container'        // Split between children: blockquote, div
   | 'semantic-pair'    // Keep together: figure+figcaption, dt+dd
   | 'semantic-sequence'// Min items each side: li, tr
-  | 'heading-group';   // Consecutive headings + minContent
+  | 'heading-group'    // Consecutive headings + minContent
+  | 'table';           // Tables: split by rows, keep thead with body
 
 /**
  * Page size presets
@@ -95,6 +96,9 @@ export interface MeasuredBlock {
   forceBreakBefore: boolean;
   isHeading: boolean;
   headingLevel?: number;
+  // Table-specific
+  thead?: HTMLElement;
+  theadHeight?: number;
 }
 
 /**
@@ -143,9 +147,9 @@ export const PAGE_SIZES: Record<PageSizePreset, { width: number; height: number 
 export const DEFAULT_OPTIONS: ResolvedOptions = {
   pageHeight: PAGE_SIZES.A4.height,
   pageWidth: PAGE_SIZES.A4.width,
-  contentHeight: PAGE_SIZES.A4.height - 160, // 80px padding top + bottom
+  contentHeight: PAGE_SIZES.A4.height - 120, // 80px top + 40px bottom
   contentWidth: PAGE_SIZES.A4.width - 160,
-  padding: { top: 80, right: 80, bottom: 80, left: 80 },
+  padding: { top: 80, right: 80, bottom: 40, left: 80 },
   orientation: 'portrait',
   orphanLines: 2,
   widowLines: 2,

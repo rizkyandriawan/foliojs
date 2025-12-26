@@ -68,6 +68,9 @@ export function findSplitPoint(
     case 'semantic-sequence':
       return findSequenceSplitPoint(block, available, options);
 
+    case 'table':
+      return findTableSplitPoint(block, available, options);
+
     default:
       return null;
   }
@@ -239,6 +242,66 @@ function findSequenceSplitPoint(
   for (let i = splitIndex; i < children.length; i++) {
     const child = children[i];
     heightAfter += child.height + child.marginTop + child.marginBottom;
+  }
+
+  return {
+    type: 'child',
+    index: splitIndex,
+    heightBefore,
+    heightAfter,
+  };
+}
+
+/**
+ * Find split point for tables
+ * THEAD + at least minRowsForSplit rows must stay together
+ */
+function findTableSplitPoint(
+  block: MeasuredBlock,
+  available: number,
+  options: ResolvedOptions
+): SplitPoint | null {
+  const rows = block.children;
+  if (!rows || rows.length < options.minRowsForSplit * 2) return null;
+
+  const theadHeight = block.theadHeight || 0;
+  let cumHeight = theadHeight; // Start with thead height
+  let splitIndex = -1;
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const rowHeight = row.height + row.marginTop + row.marginBottom;
+
+    if (cumHeight + rowHeight > available) {
+      // Can't fit this row
+      // Make sure we have at least minRowsForSplit on current page
+      if (i >= options.minRowsForSplit) {
+        splitIndex = i;
+      }
+      break;
+    }
+
+    cumHeight += rowHeight;
+  }
+
+  // Make sure we leave at least minRowsForSplit for next page
+  if (splitIndex < 0) return null;
+  if (rows.length - splitIndex < options.minRowsForSplit) {
+    splitIndex = rows.length - options.minRowsForSplit;
+    if (splitIndex < options.minRowsForSplit) return null;
+  }
+
+  // Calculate heights
+  let heightBefore = theadHeight;
+  for (let i = 0; i < splitIndex; i++) {
+    const row = rows[i];
+    heightBefore += row.height + row.marginTop + row.marginBottom;
+  }
+
+  let heightAfter = theadHeight; // Include thead in second part too if repeatTableHeader
+  for (let i = splitIndex; i < rows.length; i++) {
+    const row = rows[i];
+    heightAfter += row.height + row.marginTop + row.marginBottom;
   }
 
   return {

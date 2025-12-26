@@ -78,6 +78,9 @@ export function getElementType(el: HTMLElement): ElementType {
   // Line-based
   if (tag === 'PRE' || tag === 'CODE') return 'line-based';
 
+  // Tables - special handling
+  if (tag === 'TABLE') return 'table';
+
   // Semantic pairs
   if (tag === 'FIGURE') return 'semantic-pair';
   if (tag === 'DT' || tag === 'DD') return 'semantic-pair';
@@ -233,6 +236,27 @@ export function measureElement(
       block.children = childElements
         .map(child => measureElement(child, options))
         .filter((b): b is MeasuredBlock => b !== null);
+    }
+  }
+
+  // Special handling for tables - measure rows, not thead/tbody
+  if (type === 'table') {
+    const table = el as HTMLTableElement;
+    const thead = table.querySelector('thead');
+    const rows = table.querySelectorAll('tbody tr');
+
+    if (thead) {
+      block.thead = thead as HTMLElement;
+      block.theadHeight = thead.offsetHeight;
+    }
+
+    if (rows.length > 0) {
+      block.children = Array.from(rows)
+        .map(row => measureElement(row as HTMLElement, options))
+        .filter((b): b is MeasuredBlock => b !== null);
+
+      // Table can split if it has enough rows
+      block.canSplit = rows.length >= options.minRowsForSplit;
     }
   }
 

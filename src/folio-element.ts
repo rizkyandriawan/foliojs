@@ -1,6 +1,7 @@
 import type { PaginateOptions, PageSizePreset, Orientation, Page, PageFragment } from './types.js';
 import { PAGE_SIZES } from './types.js';
 import { paginate } from './paginate.js';
+import { getHandlerRegistry } from './handlers/index.js';
 
 /**
  * <folio-pages> Web Component
@@ -28,37 +29,116 @@ export class FolioElement extends HTMLElement {
   private originalContent: DocumentFragment | null = null;
   private pagesContainer: HTMLDivElement | null = null;
   private isPaginating = false;
+  private contentObserver: MutationObserver | null = null;
+  private debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     super();
   }
 
   connectedCallback() {
-    // Store original content
-    this.originalContent = document.createDocumentFragment();
-    while (this.firstChild) {
-      this.originalContent.appendChild(this.firstChild);
-    }
-
-    // Create pages container
+    // Create pages container first
     this.pagesContainer = document.createElement('div');
     this.pagesContainer.className = 'folio-pages';
-    this.appendChild(this.pagesContainer);
 
-    // Add default styles
-    this.injectStyles();
-
-    // Paginate
-    this.doPaginate();
+    // Check if we have initial content
+    if (this.childNodes.length > 0) {
+      // Store original content
+      this.originalContent = document.createDocumentFragment();
+      while (this.firstChild) {
+        this.originalContent.appendChild(this.firstChild);
+      }
+      this.appendChild(this.pagesContainer);
+      this.injectStyles();
+      this.doPaginate();
+    } else {
+      // No content yet - set up observer for React/dynamic content
+      this.appendChild(this.pagesContainer);
+      this.injectStyles();
+      this.setupContentObserver();
+    }
   }
 
   disconnectedCallback() {
     this.originalContent = null;
     this.pagesContainer = null;
+    if (this.contentObserver) {
+      this.contentObserver.disconnect();
+      this.contentObserver = null;
+    }
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+  }
+
+  /**
+   * Set up MutationObserver to detect content added by React/frameworks
+   */
+  private setupContentObserver() {
+    this.contentObserver = new MutationObserver((mutations) => {
+      // Ignore mutations if we're paginating
+      if (this.isPaginating) return;
+
+      // Check if real content was added (not our internal elements)
+      const hasNewContent = mutations.some(m =>
+        Array.from(m.addedNodes).some(node => {
+          if (node.nodeType !== Node.ELEMENT_NODE) return false;
+          const el = node as HTMLElement;
+          // Skip our internal elements
+          if (el === this.pagesContainer) return false;
+          if (el.classList?.contains('folio-measure')) return false;
+          if (el.classList?.contains('folio-pages')) return false;
+          if (el.classList?.contains('folio-page')) return false;
+          return true;
+        })
+      );
+
+      if (hasNewContent) {
+        // Debounce to batch multiple mutations
+        if (this.debounceTimer) clearTimeout(this.debounceTimer);
+        this.debounceTimer = setTimeout(() => {
+          this.captureAndPaginate();
+        }, 50); // Increased debounce for frameworks
+      }
+    });
+
+    this.contentObserver.observe(this, { childList: true });
+  }
+
+  /**
+   * Capture current content and paginate
+   */
+  private captureAndPaginate() {
+    if (this.isPaginating) return;
+
+    // Capture content (excluding our internal elements)
+    this.originalContent = document.createDocumentFragment();
+    const children = Array.from(this.childNodes);
+    for (const child of children) {
+      if (child.nodeType !== Node.ELEMENT_NODE) {
+        // Keep text nodes etc
+        if (child.textContent?.trim()) {
+          this.originalContent.appendChild(child.cloneNode(true));
+        }
+        continue;
+      }
+      const el = child as HTMLElement;
+      // Skip internal elements
+      if (el === this.pagesContainer) continue;
+      if (el.classList?.contains('folio-measure')) continue;
+      if (el.classList?.contains('folio-pages')) continue;
+      // Move content to originalContent
+      this.originalContent.appendChild(child);
+    }
+
+    if (this.originalContent.childNodes.length > 0) {
+      this.doPaginate();
+    }
   }
 
   attributeChangedCallback() {
-    if (this.isConnected && !this.isPaginating) {
+    if (this.isConnected && !this.isPaginating && this.originalContent) {
       this.doPaginate();
     }
   }
@@ -118,29 +198,51 @@ export class FolioElement extends HTMLElement {
       return;
     }
 
+    // Check if we have actual content
+    if (this.originalContent.childNodes.length === 0) {
+      return;
+    }
+
     this.isPaginating = true;
+
+    // Pause observer during pagination
+    if (this.contentObserver) {
+      this.contentObserver.disconnect();
+    }
 
     try {
       // Create a hidden measurement container
       const measureContainer = document.createElement('div');
       measureContainer.className = 'folio-measure';
+
+      const pageWidth = this.getOptions().pageWidth || PAGE_SIZES.A4.width;
       measureContainer.style.cssText = `
         position: absolute;
+        left: -9999px;
+        top: 0;
         visibility: hidden;
-        width: ${this.getOptions().pageWidth || PAGE_SIZES.A4.width}px;
+        pointer-events: none;
+        width: ${pageWidth}px;
       `;
 
       // Clone content into measurement container
       const contentClone = this.originalContent.cloneNode(true);
       measureContainer.appendChild(contentClone);
-      document.body.appendChild(measureContainer);
+
+      // Append to 'this' so it inherits CSS selectors like "folio-pages h1"
+      this.appendChild(measureContainer);
+
+      // Wait for styles to apply
+      await new Promise(resolve => requestAnimationFrame(resolve));
 
       // Get options and paginate
       const options = this.getOptions();
       const result = await paginate(measureContainer, options);
 
       // Clean up measurement container
-      document.body.removeChild(measureContainer);
+      if (measureContainer.parentNode) {
+        measureContainer.parentNode.removeChild(measureContainer);
+      }
 
       // Render pages
       this.renderPages(result.pages, result.options);
@@ -149,6 +251,7 @@ export class FolioElement extends HTMLElement {
       this.dispatchEvent(new CustomEvent('paginated', {
         detail: {
           totalPages: result.totalPages,
+          pages: result.pages,
           options: result.options,
         },
       }));
@@ -157,6 +260,11 @@ export class FolioElement extends HTMLElement {
       this.dispatchEvent(new CustomEvent('error', { detail: error }));
     } finally {
       this.isPaginating = false;
+
+      // Re-enable observer
+      if (this.contentObserver) {
+        this.contentObserver.observe(this, { childList: true });
+      }
     }
   }
 
@@ -205,33 +313,18 @@ export class FolioElement extends HTMLElement {
   }
 
   /**
-   * Render a single fragment
+   * Render a single fragment using handler registry
    */
   private renderFragment(fragment: PageFragment, _sourceContainer: HTMLElement): HTMLElement | null {
-    const sourceEl = fragment.block.element;
-
-    // Find the corresponding element in source container
-    // For simplicity, clone the original element
-    const clone = sourceEl.cloneNode(true) as HTMLElement;
-
-    if (fragment.isPartial) {
-      // Apply clipping for partial fragments
-      clone.style.overflow = 'hidden';
-
-      if (fragment.clipTop !== undefined && fragment.clipHeight !== undefined) {
-        clone.style.height = `${fragment.clipHeight}px`;
-        clone.style.marginTop = `-${fragment.clipTop}px`;
-
-        // Wrap in overflow container
-        const wrapper = document.createElement('div');
-        wrapper.style.overflow = 'hidden';
-        wrapper.style.height = `${fragment.clipHeight}px`;
-        wrapper.appendChild(clone);
-        return wrapper;
-      }
-    }
-
-    return clone;
+    const registry = getHandlerRegistry();
+    return registry.render(
+      fragment.block,
+      fragment.isPartial,
+      fragment.clipTop,
+      fragment.clipHeight,
+      fragment.startLine,
+      fragment.endLine
+    );
   }
 
   /**
@@ -246,6 +339,7 @@ export class FolioElement extends HTMLElement {
     style.textContent = `
       folio-pages {
         display: block;
+        position: relative;
       }
 
       .folio-pages {
@@ -259,6 +353,12 @@ export class FolioElement extends HTMLElement {
 
       .folio-page {
         page-break-after: always;
+      }
+
+      .folio-measure {
+        position: absolute !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
       }
 
       @media print {
@@ -278,10 +378,156 @@ export class FolioElement extends HTMLElement {
   }
 
   /**
-   * Force re-pagination
+   * Force re-pagination (re-captures current content)
    */
   public refresh() {
+    // Re-capture content (excluding our own internal elements)
+    this.originalContent = document.createDocumentFragment();
+    const children = Array.from(this.children);
+    for (const child of children) {
+      if (child === this.pagesContainer) continue;
+      if (child.classList?.contains('folio-measure')) continue;
+      this.originalContent.appendChild(child);
+    }
+
+    // Ensure pagesContainer exists
+    if (!this.pagesContainer) {
+      this.pagesContainer = document.createElement('div');
+      this.pagesContainer.className = 'folio-pages';
+      this.appendChild(this.pagesContainer);
+    }
+
     this.doPaginate();
+  }
+
+  /**
+   * Public method to trigger re-pagination
+   */
+  public paginate() {
+    this.doPaginate();
+  }
+
+  /**
+   * Generate print-ready HTML string for PDF generation
+   * @param options.includeStyles - Include computed styles (default: true)
+   * @param options.title - Document title
+   */
+  public toPrintHTML(options: { includeStyles?: boolean; title?: string } = {}): string {
+    const { includeStyles = true, title = 'Document' } = options;
+
+    if (!this.pagesContainer) {
+      return '';
+    }
+
+    const pageOptions = this.getOptions();
+    const pageWidth = pageOptions.pageWidth || PAGE_SIZES.A4.width;
+    const pageHeight = pageOptions.pageHeight || PAGE_SIZES.A4.height;
+
+    // Collect styles from the document
+    let styles = '';
+    if (includeStyles) {
+      // Get all stylesheets
+      const styleSheets = Array.from(document.styleSheets);
+      for (const sheet of styleSheets) {
+        try {
+          if (sheet.cssRules) {
+            for (const rule of sheet.cssRules) {
+              styles += rule.cssText + '\n';
+            }
+          }
+        } catch {
+          // Skip cross-origin stylesheets
+        }
+      }
+
+      // Get inline styles
+      const inlineStyles = document.querySelectorAll('style');
+      inlineStyles.forEach(s => {
+        styles += s.textContent + '\n';
+      });
+    }
+
+    // Build print-specific styles
+    const printStyles = `
+      @page {
+        size: ${pageWidth}px ${pageHeight}px;
+        margin: 0;
+      }
+
+      * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: white;
+      }
+
+      .folio-print-page {
+        width: ${pageWidth}px;
+        height: ${pageHeight}px;
+        box-sizing: border-box;
+        overflow: hidden;
+        page-break-after: always;
+        page-break-inside: avoid;
+        background: white;
+      }
+
+      .folio-print-page:last-child {
+        page-break-after: auto;
+      }
+
+      @media screen {
+        body {
+          background: #f0f0f0;
+          padding: 20px;
+        }
+
+        .folio-print-page {
+          margin: 0 auto 20px auto;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+      }
+    `;
+
+    // Clone and transform pages
+    const pagesHTML: string[] = [];
+    const pages = this.pagesContainer.querySelectorAll('.folio-page');
+
+    pages.forEach((page, index) => {
+      const clone = page.cloneNode(true) as HTMLElement;
+      clone.className = 'folio-print-page';
+      clone.setAttribute('data-page', String(index + 1));
+      // Keep inline styles from original
+      pagesHTML.push(clone.outerHTML);
+    });
+
+    // Build complete HTML document
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${this.escapeHTML(title)}</title>
+  <style>
+${styles}
+${printStyles}
+  </style>
+</head>
+<body>
+${pagesHTML.join('\n')}
+</body>
+</html>`;
+  }
+
+  private escapeHTML(str: string): string {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 }
 
