@@ -25,7 +25,7 @@ No CSS `@page` polyfilling. No abstract syntax tree manipulation. No 47 configur
 ## Installation
 
 ```bash
-npm install foliojs
+npm install @rizkyandriawan/foliojs
 ```
 
 ## Usage
@@ -34,7 +34,7 @@ npm install foliojs
 
 ```html
 <script type="module">
-  import 'foliojs';
+  import '@rizkyandriawan/foliojs';
 </script>
 
 <folio page-size="A4">
@@ -45,7 +45,7 @@ npm install foliojs
 ### JavaScript API
 
 ```javascript
-import { paginate } from 'foliojs';
+import { paginate } from '@rizkyandriawan/foliojs';
 
 const pages = await paginate(document.querySelector('#content'), {
   pageHeight: 1123,
