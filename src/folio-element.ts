@@ -3,13 +3,13 @@ import { PAGE_SIZES } from './types.js';
 import { paginate } from './paginate.js';
 
 /**
- * <folio> Web Component
+ * <folio-pages> Web Component
  *
  * Usage:
- * <folio page-size="A4" orientation="portrait">
+ * <folio-pages page-size="A4" orientation="portrait">
  *   <h1>My Document</h1>
  *   <p>Content here...</p>
- * </folio>
+ * </folio-pages>
  */
 export class FolioElement extends HTMLElement {
   static observedAttributes = [
@@ -244,7 +244,7 @@ export class FolioElement extends HTMLElement {
     const style = document.createElement('style');
     style.id = styleId;
     style.textContent = `
-      folio {
+      folio-pages {
         display: block;
       }
 
@@ -287,5 +287,5 @@ export class FolioElement extends HTMLElement {
 
 // Register custom element
 if (typeof customElements !== 'undefined') {
-  customElements.define('folio', FolioElement);
+  customElements.define('folio-pages', FolioElement);
 }

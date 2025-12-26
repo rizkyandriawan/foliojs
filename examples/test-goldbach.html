@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Folio Test - Goldbach</title>
+  <style>
+    body { font-family: Georgia, serif; margin: 0; padding: 20px; background: #f5f0e5; }
+    #measure { position: absolute; visibility: hidden; }
+    #output { display: flex; flex-direction: column; align-items: center; gap: 20px; }
+    .page {
+      width: 794px;
+      min-height: 1123px;
+      background: white;
+      padding: 80px;
+      box-sizing: border-box;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .debug { background: #ffe; padding: 10px; margin-bottom: 20px; font-family: monospace; }
+    h1 { color: #333; }
+    h2 { color: #555; margin-top: 1.5em; }
+    blockquote { border-left: 4px solid #ccc; margin-left: 0; padding-left: 1em; color: #666; }
+    pre { background: #f5f5f5; padding: 1em; overflow-x: auto; }
+    code { background: #f0f0f0; padding: 0.2em 0.4em; }
+  </style>
+</head>
+<body>
+  <div class="debug" id="debug">Loading...</div>
+  <div id="measure"></div>
+  <div id="output"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script type="module">
+    import { paginate, measureBlocks, resolveOptions, getBlockChildren } from '../dist/index.js';
+
+    const markdown = `# Goldbach's Conjecture
+
+**Gimana caranya ngulik masalah matematika umur 280 tahun**
+
+---
+
+## Masalahnya Apa Sih?
+
+Jadi gini, tahun 1742 ada matematikawan namanya Goldbach. Dia notice sesuatu:
+
+> **Semua bilangan genap bisa ditulis sebagai jumlah dua bilangan prima.**
+
+Contoh:
+- 4 = 2 + 2
+- 6 = 3 + 3
+- 8 = 3 + 5
+- 10 = 5 + 5
+- 100 = 3 + 97
+
+Keliatan gampang kan?
+
+**Plot twist:** Sampe sekarang, GAK ADA yang bisa BUKTIIN ini bener buat SEMUA bilangan genap.
+
+## Gimana Kita Approach Ini?
+
+### Bikin Tabel Dulu
+
+Daripada random nyoba-nyoba, mending kita bikin tabel sistematis.
+
+**Cara bacanya:**
+- Baris = bilangan prima (2, 3, 5, 7, 11, ...)
+- Kolom = bilangan prima (2, 3, 5, 7, 11, ...)
+- Isi cell = baris + kolom
+
+Jadi cell di baris 7, kolom 23 isinya 30 (karena 7 + 23 = 30).
+
+**Goldbach's claim:** Semua bilangan genap PASTI muncul di tabel ini.
+
+## Pattern yang Kita Temuin
+
+Kalo kita jalan dari N=4, N=6, N=8, sambil track posisi cell yang kita pilih, ada pattern menarik.
+
+**Kebanyakan waktu:** Kolom naik (geser kanan)
+
+**Kadang-kadang:** Kolom TURUN (geser kiri) - ini yang kita sebut "DIP"
+
+### Kenapa Bisa Turun?
+
+Turun terjadi kalo ada "gurun komposit" - deretan angka yang semuanya BUKAN prima.
+
+## Kesimpulan
+
+Masih belum solved, tapi kita udah punya insight baru tentang struktur masalahnya.
+`;
+
+    const measureDiv = document.getElementById('measure');
+    const outputDiv = document.getElementById('output');
+    const debugDiv = document.getElementById('debug');
+
+    async function test() {
+      const html = marked.parse(markdown);
+      debugDiv.innerHTML = 'Markdown parsed...';
+
+      const tempDiv = document.createElement('div');
+      tempDiv.style.width = '634px';
+      tempDiv.innerHTML = html;
+      measureDiv.appendChild(tempDiv);
+
+      await new Promise(r => setTimeout(r, 100));
+
+      debugDiv.innerHTML += '<br>Container children: ' + tempDiv.children.length;
+
+      const children = Array.from(tempDiv.children);
+      debugDiv.innerHTML += '<br>Tags: ' + children.map(c => c.tagName).join(', ');
+
+      const blockChildren = getBlockChildren(tempDiv);
+      debugDiv.innerHTML += '<br>getBlockChildren: ' + blockChildren.length;
+
+      const options = resolveOptions({ pageHeight: 1123, pageWidth: 794, padding: 80 });
+      debugDiv.innerHTML += '<br>contentHeight: ' + options.contentHeight;
+
+      const blocks = measureBlocks(tempDiv, options);
+      debugDiv.innerHTML += '<br>measureBlocks: ' + blocks.length;
+
+      if (blocks.length === 0) {
+        debugDiv.innerHTML += '<br><b style="color:red">ERROR: No blocks!</b>';
+        return;
+      }
+
+      debugDiv.innerHTML += '<br>Types: ' + blocks.map(b => b.type).join(', ');
+
+      const result = await paginate(tempDiv, { pageHeight: 1123, pageWidth: 794, padding: 80 });
+      debugDiv.innerHTML += '<br>Pages: ' + result.totalPages;
+
+      result.pages.forEach((page, i) => {
+        const pageDiv = document.createElement('div');
+        pageDiv.className = 'page';
+        pageDiv.innerHTML = '<div style="color:#999;margin-bottom:10px">Page ' + (i+1) + '</div>';
+
+        page.fragments.forEach(frag => {
+          const clone = frag.block.element.cloneNode(true);
+          if (frag.isPartial && frag.clipHeight) {
+            const wrapper = document.createElement('div');
+            wrapper.style.height = frag.clipHeight + 'px';
+            wrapper.style.overflow = 'hidden';
+            clone.style.marginTop = '-' + (frag.clipTop || 0) + 'px';
+            wrapper.appendChild(clone);
+            pageDiv.appendChild(wrapper);
+          } else {
+            pageDiv.appendChild(clone);
+          }
+        });
+
+        outputDiv.appendChild(pageDiv);
+      });
+
+      debugDiv.innerHTML += '<br><b style="color:green">DONE!</b>';
+    }
+
+    test().catch(err => {
+      debugDiv.innerHTML = '<b style="color:red">ERROR: ' + err.message + '</b><pre>' + err.stack + '</pre>';
+    });
+  </script>
+</body>
+</html>

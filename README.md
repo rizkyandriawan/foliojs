@@ -3,10 +3,10 @@
 DOM-first pagination. Measure, don't simulate.
 
 ```html
-<folio page-size="A4">
+<folio-pages page-size="A4">
   <h1>Your content here</h1>
   <p>It just works.</p>
-</folio>
+</folio-pages>
 ```
 
 ## Why Folio?
@@ -37,9 +37,9 @@ npm install @rizkyandriawan/foliojs
   import '@rizkyandriawan/foliojs';
 </script>
 
-<folio page-size="A4">
+<folio-pages page-size="A4">
   <!-- Your content -->
-</folio>
+</folio-pages>
 ```
 
 ### JavaScript API
