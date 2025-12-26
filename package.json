@@ -1,0 +1,46 @@
+{
+  "name": "foliojs",
+  "version": "0.1.0",
+  "description": "DOM-first pagination. Measure, don't simulate.",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "pagination",
+    "paged-media",
+    "print",
+    "pdf",
+    "dom",
+    "web-component"
+  ],
+  "author": "Rizky Andriawan",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rizkyandriawan/foliojs.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rizkyandriawan/foliojs/issues"
+  },
+  "homepage": "https://github.com/rizkyandriawan/foliojs#readme",
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "vitest": "^2.0.0"
+  }
+}
