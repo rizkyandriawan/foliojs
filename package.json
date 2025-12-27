@@ -1,6 +1,6 @@
 {
   "name": "@rizkyandriawan/foliojs",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "DOM-first pagination. Measure, don't simulate.",
   "type": "module",
   "main": "dist/index.js",

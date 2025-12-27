@@ -101,7 +101,7 @@ function fullFragment(block: MeasuredBlock): PageFragment {
 }
 
 /**
- * Create fragment for partial block (split)
+ * Create fragment for partial block (line-based split with clipping)
  */
 function partialFragment(
   block: MeasuredBlock,
@@ -117,6 +117,17 @@ function partialFragment(
     clipHeight,
     startLine,
     endLine,
+  };
+}
+
+/**
+ * Create fragment for child-based split (list, table, container)
+ * These need isPartial=true so render() knows to use children subset
+ */
+function childSplitFragment(block: MeasuredBlock): PageFragment {
+  return {
+    block,
+    isPartial: true,
   };
 }
 
@@ -205,7 +216,7 @@ export async function paginate(
             children: block.children?.slice(0, sp.index),
             height: sp.heightBefore,
           };
-          addFragment(currentPage, fullFragment(firstPart));
+          addFragment(currentPage, childSplitFragment(firstPart));
 
           pages.push(currentPage);
           currentPage = createPage(pages.length, resolved.orientation);
@@ -224,7 +235,7 @@ export async function paginate(
             secondPart.theadHeight = undefined;
           }
 
-          addFragment(currentPage, fullFragment(secondPart));
+          addFragment(currentPage, childSplitFragment(secondPart));
           remaining -= sp.heightAfter;
         }
       } else {
