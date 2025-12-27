@@ -105,6 +105,7 @@ console.log(`Generated ${result.totalPages} pages`);
 | `widow-lines` | `2` | Minimum lines to keep at top of new page |
 | `min-content-lines` | `3` | Minimum content lines after a heading |
 | `repeat-table-header` | `false` | Repeat `<thead>` when tables split across pages |
+| `algorithm` | `v2` | Pagination algorithm: `v1` (pre-measure) or `v2` (fill-overflow) |
 
 ### JavaScript Options
 
@@ -185,6 +186,19 @@ const result = await paginate(containerElement, options);
 ```
 
 ## How It Works
+
+### V2 Algorithm (Default)
+
+Folio 0.2.0 introduces a simpler "fill until overflow" approach:
+
+1. **Add elements one by one** to the current page
+2. **Check overflow** after each addition using `scrollHeight`
+3. **Split or move** when overflow is detected
+4. **Recurse into containers** (lists, divs) adding children individually
+
+This is more accurate than pre-measuring because it uses the browser's actual layout calculations. For nested lists, Folio only measures after adding atomic content (`<li>` text), not after adding container elements (`<ul>`, `<ol>`).
+
+To use the older pre-measure algorithm: `<folio-pages algorithm="v1">`.
 
 ### Element Handlers
 
