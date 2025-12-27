@@ -48,6 +48,15 @@ export class ProseHandler extends BaseHandler {
     const minLines = options.orphanLines + options.widowLines;
     if (lineCount < minLines) return null;
 
+    // If available space is less than minContentLines worth OR less than 60% of block height,
+    // don't split - move whole block to avoid tiny fragments
+    const minContentHeight = options.minContentLines * lineHeight;
+    const minByRatio = block.height * 0.6;
+    if (available < Math.max(minContentHeight, minByRatio)) {
+      console.log(`[Prose] Skip split: available=${available} < max(${minContentHeight}, ${minByRatio})`);
+      return null;
+    }
+
     const linesInAvailable = Math.floor(available / lineHeight);
 
     // Check orphan constraint

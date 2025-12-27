@@ -180,6 +180,8 @@ export async function paginate(
 
     const totalHeight = block.height + block.marginTop + block.marginBottom;
 
+    console.log(`[Paginate] Block ${i}: ${block.element.tagName} type=${block.type} h=${block.height} total=${totalHeight} remaining=${remaining} fits=${totalHeight <= remaining} canSplit=${block.canSplit} children=${block.children?.length ?? 0}`);
+
     // Check fit
     if (totalHeight <= remaining) {
       // Block fits entirely
@@ -187,7 +189,9 @@ export async function paginate(
       remaining -= totalHeight;
     } else if (block.canSplit) {
       // Try to find a split point using handler
+      console.log(`[Paginate] Block ${i} doesn't fit, trying to split...`);
       const splitPoint = registry.findSplitPoint(block, remaining, resolved);
+      console.log(`[Paginate] Split result:`, splitPoint);
 
       if (splitPoint) {
         const sp = splitPoint;
@@ -222,8 +226,8 @@ export async function paginate(
           currentPage = createPage(pages.length, resolved.orientation);
           remaining = resolved.contentHeight;
 
-          // Add second part to new page
-          const secondPart: MeasuredBlock = {
+          // Add second part - may need recursive splitting
+          let secondPart: MeasuredBlock = {
             ...block,
             children: block.children?.slice(sp.index),
             height: sp.heightAfter,
@@ -235,8 +239,32 @@ export async function paginate(
             secondPart.theadHeight = undefined;
           }
 
+          // Recursive split if secondPart is still too big
+          while (secondPart.height > remaining && secondPart.children && secondPart.children.length >= resolved.minItemsForSplit * 2) {
+            const nextSplit = registry.findSplitPoint(secondPart, remaining, resolved);
+            if (!nextSplit || nextSplit.type !== 'child') break;
+
+            // Split secondPart
+            const nextFirstPart: MeasuredBlock = {
+              ...secondPart,
+              children: secondPart.children.slice(0, nextSplit.index),
+              height: nextSplit.heightBefore,
+            };
+
+            addFragment(currentPage, childSplitFragment(nextFirstPart));
+            pages.push(currentPage);
+            currentPage = createPage(pages.length, resolved.orientation);
+            remaining = resolved.contentHeight;
+
+            secondPart = {
+              ...secondPart,
+              children: secondPart.children.slice(nextSplit.index),
+              height: nextSplit.heightAfter,
+            };
+          }
+
           addFragment(currentPage, childSplitFragment(secondPart));
-          remaining -= sp.heightAfter;
+          remaining -= secondPart.height;
         }
       } else {
         // Can't split, move to next page
@@ -303,11 +331,15 @@ function checkHeadingMinContent(
     return nextHeight <= spaceAfterHeading;
   }
 
-  // For splittable blocks, require at least minContentLines or 1/3 of the block
-  const lineHeight = nextBlock.lineHeight ?? 20;
-  const minByLines = options.minContentLines * lineHeight;
-  const minByRatio = nextBlock.height / 3;
-  const minContent = Math.max(minByLines, minByRatio);
+  // For splittable blocks, require first 2 items to fit
+  if (nextBlock.children && nextBlock.children.length >= 2) {
+    const first2Height = nextBlock.children[0].height + nextBlock.children[0].marginTop + nextBlock.children[0].marginBottom +
+                         nextBlock.children[1].height + nextBlock.children[1].marginTop + nextBlock.children[1].marginBottom;
+    return first2Height <= spaceAfterHeading;
+  }
 
+  // Fallback: require minContentLines
+  const lineHeight = nextBlock.lineHeight ?? 20;
+  const minContent = options.minContentLines * lineHeight;
   return minContent <= spaceAfterHeading;
 }

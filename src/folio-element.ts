@@ -1,6 +1,7 @@
-import type { PaginateOptions, PageSizePreset, Orientation, Page, PageFragment } from './types.js';
+import type { PaginateOptions, PageSizePreset, Orientation, Page, PageFragment, ResolvedOptions } from './types.js';
 import { PAGE_SIZES } from './types.js';
-import { paginate } from './paginate.js';
+import { paginate, resolveOptions } from './paginate.js';
+import { paginateV2 } from './paginate-v2.js';
 import { getHandlerRegistry } from './handlers/index.js';
 
 /**
@@ -24,6 +25,7 @@ export class FolioElement extends HTMLElement {
     'min-content-lines',
     'repeat-table-header',
     'enable-line-wrap-markers',
+    'algorithm',
   ];
 
   private originalContent: DocumentFragment | null = null;
@@ -215,7 +217,8 @@ export class FolioElement extends HTMLElement {
       const measureContainer = document.createElement('div');
       measureContainer.className = 'folio-measure';
 
-      const pageWidth = this.getOptions().pageWidth || PAGE_SIZES.A4.width;
+      const options = this.getOptions();
+      const pageWidth = options.pageWidth || PAGE_SIZES.A4.width;
       measureContainer.style.cssText = `
         position: absolute;
         left: -9999px;
@@ -235,26 +238,50 @@ export class FolioElement extends HTMLElement {
       // Wait for styles to apply
       await new Promise(resolve => requestAnimationFrame(resolve));
 
-      // Get options and paginate
-      const options = this.getOptions();
-      const result = await paginate(measureContainer, options);
+      // Check which algorithm to use (default to v2)
+      const algorithm = this.getAttribute('algorithm') || 'v2';
 
-      // Clean up measurement container
-      if (measureContainer.parentNode) {
-        measureContainer.parentNode.removeChild(measureContainer);
+      if (algorithm === 'v2') {
+        // Use V2 algorithm (fill until overflow)
+        const resolved = resolveOptions(options);
+        const v2Pages = paginateV2(measureContainer, resolved);
+
+        // Clean up measurement container
+        if (measureContainer.parentNode) {
+          measureContainer.parentNode.removeChild(measureContainer);
+        }
+
+        // Render V2 pages
+        this.renderPagesV2(v2Pages, resolved);
+
+        // Dispatch event
+        this.dispatchEvent(new CustomEvent('paginated', {
+          detail: {
+            totalPages: v2Pages.length,
+            options: resolved,
+          },
+        }));
+      } else {
+        // Use V1 algorithm (pre-measure)
+        const result = await paginate(measureContainer, options);
+
+        // Clean up measurement container
+        if (measureContainer.parentNode) {
+          measureContainer.parentNode.removeChild(measureContainer);
+        }
+
+        // Render pages
+        this.renderPages(result.pages, result.options);
+
+        // Dispatch event
+        this.dispatchEvent(new CustomEvent('paginated', {
+          detail: {
+            totalPages: result.totalPages,
+            pages: result.pages,
+            options: result.options,
+          },
+        }));
       }
-
-      // Render pages
-      this.renderPages(result.pages, result.options);
-
-      // Dispatch event
-      this.dispatchEvent(new CustomEvent('paginated', {
-        detail: {
-          totalPages: result.totalPages,
-          pages: result.pages,
-          options: result.options,
-        },
-      }));
     } catch (error) {
       console.error('Folio pagination error:', error);
       this.dispatchEvent(new CustomEvent('error', { detail: error }));
@@ -325,6 +352,37 @@ export class FolioElement extends HTMLElement {
       fragment.startLine,
       fragment.endLine
     );
+  }
+
+  /**
+   * Render V2 paginated pages (simpler - just DOM elements)
+   */
+  private renderPagesV2(pages: { element: HTMLElement; pageNumber: number }[], options: ResolvedOptions) {
+    if (!this.pagesContainer) return;
+
+    this.pagesContainer.innerHTML = '';
+
+    pages.forEach((page) => {
+      const pageEl = document.createElement('div');
+      pageEl.className = 'folio-page';
+      pageEl.setAttribute('data-page', String(page.pageNumber));
+      pageEl.style.cssText = `
+        width: ${options.pageWidth}px;
+        height: ${options.pageHeight}px;
+        padding: ${options.padding.top}px ${options.padding.right}px ${options.padding.bottom}px ${options.padding.left}px;
+        box-sizing: border-box;
+        background: white;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        overflow: hidden;
+        position: relative;
+      `;
+
+      // V2 pages already have the content ready
+      const contentEl = page.element.cloneNode(true) as HTMLElement;
+      pageEl.appendChild(contentEl);
+      this.pagesContainer!.appendChild(pageEl);
+    });
   }
 
   /**

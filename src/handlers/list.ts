@@ -11,6 +11,8 @@ interface FlatItem {
   marginTop: number;
   marginBottom: number;
   hasNestedList: boolean;    // Does this LI contain a nested UL/OL?
+  nestedListOverhead: number; // Padding/margin of nested list (if any)
+  leadingOverhead: number;   // Overhead needed if this item starts a page (from ancestor nesting)
   nestedListTag?: 'ul' | 'ol'; // Tag of nested list if any
   parentListTag: 'ul' | 'ol';  // Tag of parent list
 }
@@ -59,8 +61,9 @@ export class ListHandler extends BaseHandler {
 
   /**
    * Recursively flatten all LIs in a list
+   * @param cumulativeOverhead - accumulated overhead from ancestor nesting
    */
-  private flattenList(listEl: HTMLElement, depth: number): FlatItem[] {
+  private flattenList(listEl: HTMLElement, depth: number, cumulativeOverhead: number = 0): FlatItem[] {
     const items: FlatItem[] = [];
     const listTag = listEl.tagName.toLowerCase() as 'ul' | 'ol';
     const directLis = listEl.querySelectorAll(':scope > li');
@@ -74,16 +77,25 @@ export class ListHandler extends BaseHandler {
 
       // Calculate content height (excluding nested list)
       let contentHeight = liEl.offsetHeight;
+      let nestedListOverhead = 0; // padding/margin of nested list itself
       if (nestedList) {
+        // Height before nested list starts
         contentHeight = nestedList.offsetTop - liEl.offsetTop;
-        // Account for nested list's margin-top if it adds to the gap
+
+        // Calculate nested list overhead (its own padding/margin not counted in children)
         const nestedStyle = getComputedStyle(nestedList);
+        const nestedPaddingTop = parseFloat(nestedStyle.paddingTop) || 0;
+        const nestedPaddingBottom = parseFloat(nestedStyle.paddingBottom) || 0;
         const nestedMarginTop = parseFloat(nestedStyle.marginTop) || 0;
-        if (nestedMarginTop > 0) {
-          contentHeight -= nestedMarginTop;
-        }
+        const nestedMarginBottom = parseFloat(nestedStyle.marginBottom) || 0;
+        nestedListOverhead = nestedPaddingTop + nestedPaddingBottom + nestedMarginTop + nestedMarginBottom;
       }
 
+      // leadingOverhead = cumulative overhead if this item starts a page
+      const leadingOverhead = cumulativeOverhead;
+
+      const words = liEl.textContent?.trim().split(/\s+/).slice(0, 3).join(' ') || '';
+      console.log(`[Flatten] depth=${depth} fullH=${liEl.offsetHeight} contentH=${contentHeight} overhead=${nestedListOverhead} leading=${leadingOverhead} nested=${!!nestedList} "${words}"`);
       items.push({
         element: liEl,
         depth,
@@ -91,13 +103,15 @@ export class ListHandler extends BaseHandler {
         marginTop: parseFloat(style.marginTop) || 0,
         marginBottom: nestedList ? 0 : (parseFloat(style.marginBottom) || 0), // No margin if has nested
         hasNestedList: !!nestedList,
+        nestedListOverhead,
+        leadingOverhead,
         nestedListTag: nestedList ? nestedList.tagName.toLowerCase() as 'ul' | 'ol' : undefined,
         parentListTag: listTag,
       });
 
-      // Recursively flatten nested list
+      // Recursively flatten nested list with accumulated overhead
       if (nestedList) {
-        const nestedItems = this.flattenList(nestedList, depth + 1);
+        const nestedItems = this.flattenList(nestedList, depth + 1, cumulativeOverhead + nestedListOverhead);
         items.push(...nestedItems);
 
         // Add the "closing" margin of the parent LI after nested items
@@ -133,17 +147,22 @@ export class ListHandler extends BaseHandler {
       const item = items[i];
       const flatItem = (item as any)._flatItem as FlatItem;
 
-      // Add nested list padding when entering deeper level
+      // Add overhead when entering nested list or for first item
       let extraPadding = 0;
-      if (i > 0) {
+      if (i === 0) {
+        // First item - use its leadingOverhead (accumulated from ancestors)
+        extraPadding = flatItem.leadingOverhead;
+      } else {
         const prevFlatItem = (items[i - 1] as any)._flatItem as FlatItem;
-        if (flatItem.depth > prevFlatItem.depth) {
-          // Entering nested list - add its padding
-          extraPadding = 8; // Approximate nested list padding
+        if (flatItem.depth > prevFlatItem.depth && prevFlatItem.hasNestedList) {
+          // Entering nested list - add parent's nestedListOverhead
+          extraPadding = prevFlatItem.nestedListOverhead;
         }
       }
 
       const itemHeight = item.height + item.marginTop + item.marginBottom + extraPadding;
+      const words = item.element.textContent?.trim().split(/\s+/).slice(0, 2).join(' ') || '';
+      console.log(`[Split] i=${i} depth=${flatItem.depth} h=${itemHeight} cum=${cumHeight} avail=${available} fits=${cumHeight + itemHeight <= available} "${words}"`);
 
       if (cumHeight + itemHeight > available) {
         // Can't fit this item
@@ -164,21 +183,41 @@ export class ListHandler extends BaseHandler {
       if (splitIndex < options.minItemsForSplit) return null;
     }
 
-    // Calculate heights
+    // Calculate heights (including nestedListOverhead)
     let heightBefore = listPaddingTop;
     for (let i = 0; i < splitIndex; i++) {
       const item = items[i];
-      heightBefore += item.height + item.marginTop + item.marginBottom;
+      const flatItem = (item as any)._flatItem as FlatItem;
+      let extra = 0;
+      if (i > 0) {
+        const prevFlatItem = (items[i - 1] as any)._flatItem as FlatItem;
+        if (flatItem.depth > prevFlatItem.depth && prevFlatItem.hasNestedList) {
+          extra = prevFlatItem.nestedListOverhead;
+        }
+      }
+      heightBefore += item.height + item.marginTop + item.marginBottom + extra;
     }
     heightBefore += listPaddingBottom;
 
     let heightAfter = listPaddingTop;
     for (let i = splitIndex; i < items.length; i++) {
       const item = items[i];
-      heightAfter += item.height + item.marginTop + item.marginBottom;
+      const flatItem = (item as any)._flatItem as FlatItem;
+      let extra = 0;
+      if (i === splitIndex) {
+        // First item of second part - use its leadingOverhead
+        extra = flatItem.leadingOverhead;
+      } else {
+        const prevFlatItem = (items[i - 1] as any)._flatItem as FlatItem;
+        if (flatItem.depth > prevFlatItem.depth && prevFlatItem.hasNestedList) {
+          extra = prevFlatItem.nestedListOverhead;
+        }
+      }
+      heightAfter += item.height + item.marginTop + item.marginBottom + extra;
     }
     heightAfter += listPaddingBottom;
 
+    console.log(`[Split] Result: index=${splitIndex} heightBefore=${heightBefore} heightAfter=${heightAfter} total=${heightBefore + heightAfter}`);
     return {
       type: 'child',
       index: splitIndex,
