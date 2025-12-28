@@ -147,9 +147,9 @@ export const PAGE_SIZES: Record<PageSizePreset, { width: number; height: number 
 export const DEFAULT_OPTIONS: ResolvedOptions = {
   pageHeight: PAGE_SIZES.A4.height,
   pageWidth: PAGE_SIZES.A4.width,
-  contentHeight: PAGE_SIZES.A4.height - 120, // 80px top + 40px bottom
+  contentHeight: PAGE_SIZES.A4.height - 188, // 80px top + 108px bottom
   contentWidth: PAGE_SIZES.A4.width - 160,
-  padding: { top: 80, right: 80, bottom: 40, left: 80 },
+  padding: { top: 80, right: 80, bottom: 108, left: 80 },
   orientation: 'portrait',
   orphanLines: 2,
   widowLines: 2,

@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.1] - 2025-12-28
+
+### Added
+- Code block splitting: per-line with continuation indicators (`↪ continued` / `continues ↩`)
+- Paragraph splitting: per-sentence, or per 6 words for long sentences (>10 words)
+
+### Fixed
+- Table split constraint: now allows split with 1+ fitted rows (was requiring minRowsForSplit)
+- Bottom padding increased to 108px for better page balance
+
 ## [0.2.0] - 2025-12-27
 
 ### Added

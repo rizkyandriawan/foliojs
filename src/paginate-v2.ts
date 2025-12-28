@@ -99,6 +99,34 @@ function processElement(element: HTMLElement, state: PaginationState): void {
     return;
   }
 
+  // For code blocks: process line by line
+  if (tag === 'pre') {
+    const didSplit = trySplitCodeBlock(element, state);
+    if (didSplit) return;
+    // If split failed, move to new page and retry
+    startNewPage(state);
+    const retryResult = trySplitCodeBlock(element, state);
+    if (!retryResult) {
+      const newTarget = getCurrentTarget(state);
+      newTarget.appendChild(element.cloneNode(true) as HTMLElement);
+    }
+    return;
+  }
+
+  // For paragraphs: process per sentence (or per 6 words for long sentences)
+  if (tag === 'p') {
+    const didSplit = trySplitParagraph(element, state);
+    if (didSplit) return;
+    // If split failed, move to new page and retry
+    startNewPage(state);
+    const retryResult = trySplitParagraph(element, state);
+    if (!retryResult) {
+      const newTarget = getCurrentTarget(state);
+      newTarget.appendChild(element.cloneNode(true) as HTMLElement);
+    }
+    return;
+  }
+
   // Clone and try to add
   const clone = element.cloneNode(true) as HTMLElement;
   target.appendChild(clone);
@@ -113,7 +141,9 @@ function processElement(element: HTMLElement, state: PaginationState): void {
   clone.remove();
 
   if (tag === 'table') {
+    console.log('[ProcessElement] Table overflow, trying to split');
     const didSplit = trySplitTable(element as HTMLTableElement, state);
+    console.log('[ProcessElement] Table split result:', didSplit);
     if (didSplit) return;
   } else if (isSplittable(element)) {
     const didSplit = trySplitContainer(element, state);
@@ -144,8 +174,16 @@ function trySplitTable(table: HTMLTableElement, state: PaginationState): boolean
   const tbody = table.querySelector('tbody') || table;
   const rows = Array.from(tbody.querySelectorAll(':scope > tr')) as HTMLTableRowElement[];
 
-  if (rows.length < state.options.minRowsForSplit * 2) {
-    // Not enough rows to split
+  console.log('[Table] Start split:', {
+    rowCount: rows.length,
+    hasThead: !!thead,
+    maxHeight: state.maxHeight,
+    currentScrollHeight: state.measureBox.scrollHeight,
+    ancestorStackDepth: state.ancestorStack.length
+  });
+
+  if (rows.length < 1) {
+    console.log('[Table] Skip: not enough rows');
     return false;
   }
 
@@ -176,19 +214,26 @@ function trySplitTable(table: HTMLTableElement, state: PaginationState): boolean
   state.ancestorStack.push({ element: tbodyClone });
 
   let fittedCount = 0;
+  console.log('[Table] Starting row loop, initial scrollHeight:', state.measureBox.scrollHeight);
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const rowClone = row.cloneNode(true) as HTMLTableRowElement;
     tbodyClone.appendChild(rowClone);
 
-    if (state.measureBox.scrollHeight > state.maxHeight) {
+    const scrollHeight = state.measureBox.scrollHeight;
+    const rowText = (row.textContent || '').trim().split(/\s+/).slice(0, 4).join(' ');
+    const remaining = rows.length - i - 1;
+    console.log(`[Table] Row ${i}/${rows.length}: "${rowText}..." | height=${scrollHeight}/${state.maxHeight} | overflow=${scrollHeight > state.maxHeight} | remaining=${remaining}`);
+
+    if (scrollHeight > state.maxHeight) {
       // This row caused overflow
       rowClone.remove();
+      console.log(`[Table] Row ${i} removed, fittedCount=${fittedCount}`);
 
-      // Check minimum rows constraint
-      if (fittedCount < state.options.minRowsForSplit) {
-        // Not enough rows fit, can't split here
+      // Check if at least 1 row fits (we need something on current page)
+      if (fittedCount < 1) {
+        console.log(`[Table] ❌ Can't split: no rows fit on current page`);
         tableClone.remove();
         state.ancestorStack.pop(); // tbody
         state.ancestorStack.pop(); // table
@@ -197,10 +242,13 @@ function trySplitTable(table: HTMLTableElement, state: PaginationState): boolean
 
       // Check if remaining rows meet minimum
       const remainingCount = rows.length - i;
+      console.log(`[Table] ✂️ SPLIT: fitted=${fittedCount} rows here, remaining=${remainingCount} rows to next page`);
+
       if (remainingCount < state.options.minRowsForSplit) {
         // Would leave too few rows on next page
         // Remove some rows from current page to balance
         const rowsToMove = state.options.minRowsForSplit - remainingCount;
+        console.log(`[Table] Moving ${rowsToMove} rows to next page for balance`);
         for (let j = 0; j < rowsToMove && tbodyClone.lastChild; j++) {
           tbodyClone.lastChild.remove();
           fittedCount--;
@@ -211,6 +259,7 @@ function trySplitTable(table: HTMLTableElement, state: PaginationState): boolean
         // Start new page for remaining rows
         state.ancestorStack.pop(); // tbody
         state.ancestorStack.pop(); // table
+        console.log(`[Table] Starting new page, processing rows from index ${newStartIndex}`);
         startNewPage(state);
 
         // Process remaining rows
@@ -221,6 +270,7 @@ function trySplitTable(table: HTMLTableElement, state: PaginationState): boolean
       // Start new page for remaining rows
       state.ancestorStack.pop(); // tbody
       state.ancestorStack.pop(); // table
+      console.log(`[Table] Starting new page, processing rows from index ${i}`);
       startNewPage(state);
 
       // Process remaining rows
@@ -232,6 +282,7 @@ function trySplitTable(table: HTMLTableElement, state: PaginationState): boolean
   }
 
   // All rows fit
+  console.log(`[Table] All ${fittedCount} rows fit on current page`);
   state.ancestorStack.pop(); // tbody
   state.ancestorStack.pop(); // table
   return true;
@@ -246,9 +297,11 @@ function processRemainingRows(
   thead: HTMLElement | null,
   state: PaginationState
 ): void {
+  console.log(`[Table:Remaining] Processing ${rows.length} remaining rows`);
   if (rows.length === 0) return;
 
   const target = getCurrentTarget(state);
+  console.log(`[Table:Remaining] Target element:`, target.tagName, target.className);
 
   // Create new table
   const tableClone = originalTable.cloneNode(false) as HTMLTableElement;
@@ -257,6 +310,7 @@ function processRemainingRows(
   // Add thead (repeated)
   if (thead) {
     tableClone.appendChild(thead.cloneNode(true));
+    console.log('[Table:Remaining] Added repeated thead');
   }
 
   // Create tbody
@@ -271,23 +325,32 @@ function processRemainingRows(
   state.ancestorStack.push({ element: tbodyClone });
 
   let fittedCount = 0;
+  console.log('[Table:Remaining] Initial scrollHeight:', state.measureBox.scrollHeight);
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const rowClone = row.cloneNode(true) as HTMLTableRowElement;
     tbodyClone.appendChild(rowClone);
 
-    if (state.measureBox.scrollHeight > state.maxHeight) {
+    const scrollHeight = state.measureBox.scrollHeight;
+    const rowText = (row.textContent || '').trim().split(/\s+/).slice(0, 4).join(' ');
+    const remaining = rows.length - i - 1;
+    console.log(`[Table:Remaining] Row ${i}/${rows.length}: "${rowText}..." | height=${scrollHeight}/${state.maxHeight} | overflow=${scrollHeight > state.maxHeight} | remaining=${remaining}`);
+
+    if (scrollHeight > state.maxHeight) {
       // Overflow again
       rowClone.remove();
 
-      if (fittedCount < state.options.minRowsForSplit) {
-        // This shouldn't happen on a fresh page, but handle it
-        console.warn('Table row too large for page');
-        tbodyClone.appendChild(rowClone); // Keep it anyway
+      if (fittedCount < 1) {
+        // First row doesn't fit - row is too large for page, keep anyway
+        console.warn(`[Table:Remaining] ⚠️ Row too large for page, keeping anyway`);
+        tbodyClone.appendChild(rowClone);
         fittedCount++;
         continue;
       }
+
+      const remainingNow = rows.length - i;
+      console.log(`[Table:Remaining] ✂️ SPLIT: fitted=${fittedCount} rows here, remaining=${remainingNow} rows to next page`);
 
       // Start another new page
       state.ancestorStack.pop(); // tbody
@@ -303,8 +366,318 @@ function processRemainingRows(
   }
 
   // All remaining rows fit
+  console.log(`[Table:Remaining] All ${fittedCount} rows fit`);
   state.ancestorStack.pop(); // tbody
   state.ancestorStack.pop(); // table
+}
+
+/**
+ * Try to split a code block across pages
+ * - Adds lines one by one
+ * - Handles long line wrapping with ↩ and ↪ indicators
+ */
+function trySplitCodeBlock(element: HTMLElement, state: PaginationState): boolean {
+  const target = getCurrentTarget(state);
+
+  // Get text content and split into lines
+  const codeEl = element.querySelector('code') || element;
+  const text = codeEl.textContent || '';
+  const lines = text.split('\n');
+
+  if (lines.length === 0) return false;
+
+  // Create pre element clone (without content)
+  const preClone = element.cloneNode(false) as HTMLElement;
+  target.appendChild(preClone);
+
+  // Create code element if original had one
+  const originalCode = element.querySelector('code');
+  let codeClone: HTMLElement;
+  if (originalCode) {
+    codeClone = originalCode.cloneNode(false) as HTMLElement;
+    preClone.appendChild(codeClone);
+  } else {
+    codeClone = preClone;
+  }
+
+  // Track which lines we've added
+  let addedLines: string[] = [];
+  let lineIndex = 0;
+  let isFirstFragment = true;
+
+  while (lineIndex < lines.length) {
+    const line = lines[lineIndex];
+
+    // Add line to code block
+    if (addedLines.length > 0) {
+      codeClone.textContent = addedLines.join('\n') + '\n' + line;
+    } else {
+      codeClone.textContent = line;
+    }
+
+    // Check overflow
+    if (state.measureBox.scrollHeight > state.maxHeight) {
+      // This line caused overflow
+      if (addedLines.length === 0) {
+        // First line doesn't fit - can't split here
+        preClone.remove();
+        return false;
+      }
+
+      // Remove the line that caused overflow
+      codeClone.textContent = addedLines.join('\n');
+
+      // Add continuation indicator at bottom
+      if (!isFirstFragment || addedLines.length < lines.length) {
+        addCodeContinuationIndicator(preClone, 'bottom');
+      }
+
+      // Start new page
+      startNewPage(state);
+
+      // Continue with remaining lines on new page
+      const remainingLines = lines.slice(lineIndex);
+      processRemainingCodeLines(element, remainingLines, state);
+      return true;
+    }
+
+    addedLines.push(line);
+    lineIndex++;
+  }
+
+  // All lines fit - check if we need top indicator (continuation from previous page)
+  // This is handled by processRemainingCodeLines for subsequent fragments
+
+  return true;
+}
+
+/**
+ * Process remaining code lines on a new page
+ */
+function processRemainingCodeLines(
+  originalPre: HTMLElement,
+  lines: string[],
+  state: PaginationState
+): void {
+  if (lines.length === 0) return;
+
+  const target = getCurrentTarget(state);
+
+  // Create pre element clone
+  const preClone = originalPre.cloneNode(false) as HTMLElement;
+  target.appendChild(preClone);
+
+  // Add top continuation indicator
+  addCodeContinuationIndicator(preClone, 'top');
+
+  // Create code element if original had one
+  const originalCode = originalPre.querySelector('code');
+  let codeClone: HTMLElement;
+  if (originalCode) {
+    codeClone = originalCode.cloneNode(false) as HTMLElement;
+    preClone.appendChild(codeClone);
+  } else {
+    codeClone = preClone;
+  }
+
+  let addedLines: string[] = [];
+  let lineIndex = 0;
+
+  while (lineIndex < lines.length) {
+    const line = lines[lineIndex];
+
+    if (addedLines.length > 0) {
+      codeClone.textContent = addedLines.join('\n') + '\n' + line;
+    } else {
+      codeClone.textContent = line;
+    }
+
+    if (state.measureBox.scrollHeight > state.maxHeight) {
+      if (addedLines.length === 0) {
+        // Even a single line doesn't fit - add anyway
+        codeClone.textContent = line;
+        addedLines.push(line);
+        lineIndex++;
+        console.warn('Code line too long for page');
+      } else {
+        // Remove overflow line
+        codeClone.textContent = addedLines.join('\n');
+      }
+
+      // Add bottom indicator
+      addCodeContinuationIndicator(preClone, 'bottom');
+
+      // Continue on next page
+      startNewPage(state);
+      processRemainingCodeLines(originalPre, lines.slice(lineIndex), state);
+      return;
+    }
+
+    addedLines.push(line);
+    lineIndex++;
+  }
+
+  // All remaining lines fit - no bottom indicator needed
+}
+
+/**
+ * Try to split a paragraph across pages
+ * - Adds per sentence
+ * - If sentence is long (>10 words), adds per 6 words
+ */
+function trySplitParagraph(element: HTMLElement, state: PaginationState): boolean {
+  const target = getCurrentTarget(state);
+
+  // Get text and split into chunks (sentences or word groups)
+  const text = element.textContent || '';
+  const chunks = splitTextIntoChunks(text);
+
+  if (chunks.length === 0) return false;
+
+  // Create paragraph clone (without content)
+  const pClone = element.cloneNode(false) as HTMLElement;
+  target.appendChild(pClone);
+
+  let addedText = '';
+  let chunkIndex = 0;
+
+  while (chunkIndex < chunks.length) {
+    const chunk = chunks[chunkIndex];
+
+    // Add chunk to paragraph
+    const newText = addedText ? addedText + ' ' + chunk : chunk;
+    pClone.textContent = newText;
+
+    // Check overflow
+    if (state.measureBox.scrollHeight > state.maxHeight) {
+      // This chunk caused overflow
+      if (!addedText) {
+        // First chunk doesn't fit - can't split here
+        pClone.remove();
+        return false;
+      }
+
+      // Restore previous text
+      pClone.textContent = addedText;
+
+      // Start new page
+      startNewPage(state);
+
+      // Continue with remaining chunks on new page
+      const remainingChunks = chunks.slice(chunkIndex);
+      processRemainingParagraphChunks(element, remainingChunks, state);
+      return true;
+    }
+
+    addedText = newText;
+    chunkIndex++;
+  }
+
+  // All chunks fit
+  return true;
+}
+
+/**
+ * Split text into chunks: sentences, or 6-word groups for long sentences
+ */
+function splitTextIntoChunks(text: string): string[] {
+  // Split by sentence endings (. ! ?)
+  const sentences = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text];
+  const chunks: string[] = [];
+
+  for (const sentence of sentences) {
+    const trimmed = sentence.trim();
+    if (!trimmed) continue;
+
+    const words = trimmed.split(/\s+/);
+
+    if (words.length > 10) {
+      // Long sentence: split into 6-word groups
+      for (let i = 0; i < words.length; i += 6) {
+        const group = words.slice(i, i + 6).join(' ');
+        chunks.push(group);
+      }
+    } else {
+      // Short sentence: keep as one chunk
+      chunks.push(trimmed);
+    }
+  }
+
+  return chunks;
+}
+
+/**
+ * Process remaining paragraph chunks on a new page
+ */
+function processRemainingParagraphChunks(
+  originalP: HTMLElement,
+  chunks: string[],
+  state: PaginationState
+): void {
+  if (chunks.length === 0) return;
+
+  const target = getCurrentTarget(state);
+
+  // Create paragraph clone
+  const pClone = originalP.cloneNode(false) as HTMLElement;
+  target.appendChild(pClone);
+
+  let addedText = '';
+  let chunkIndex = 0;
+
+  while (chunkIndex < chunks.length) {
+    const chunk = chunks[chunkIndex];
+
+    const newText = addedText ? addedText + ' ' + chunk : chunk;
+    pClone.textContent = newText;
+
+    if (state.measureBox.scrollHeight > state.maxHeight) {
+      if (!addedText) {
+        // Even a single chunk doesn't fit - add anyway
+        pClone.textContent = chunk;
+        addedText = chunk;
+        chunkIndex++;
+        console.warn('Paragraph chunk too long for page');
+      } else {
+        // Restore previous text
+        pClone.textContent = addedText;
+      }
+
+      // Continue on next page
+      startNewPage(state);
+      processRemainingParagraphChunks(originalP, chunks.slice(chunkIndex), state);
+      return;
+    }
+
+    addedText = newText;
+    chunkIndex++;
+  }
+
+  // All remaining chunks fit
+}
+
+/**
+ * Add continuation indicator to code block
+ */
+function addCodeContinuationIndicator(preEl: HTMLElement, position: 'top' | 'bottom'): void {
+  const indicator = document.createElement('div');
+  indicator.className = `folio-code-continuation folio-code-continuation-${position}`;
+  indicator.style.cssText = `
+    height: 16px;
+    font-size: 10px;
+    color: #888;
+    text-align: ${position === 'top' ? 'left' : 'right'};
+    border-${position === 'top' ? 'bottom' : 'top'}: 1px dashed rgba(128,128,128,0.3);
+    padding: 2px 8px;
+    font-family: monospace;
+  `;
+  indicator.textContent = position === 'top' ? '↪ (continued)' : '(continues) ↩';
+
+  if (position === 'top') {
+    preEl.insertBefore(indicator, preEl.firstChild);
+  } else {
+    preEl.appendChild(indicator);
+  }
 }
 
 /**
