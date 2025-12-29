@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.2] - 2025-12-29
+
+### Fixed
+- Container split now properly reopens container on new page (was losing wrapper div)
+- Retry split after starting new page when first child doesn't fit
+
 ## [0.2.1] - 2025-12-28
 
 ### Added

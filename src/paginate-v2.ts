@@ -150,10 +150,19 @@ function processElement(element: HTMLElement, state: PaginationState): void {
     if (didSplit) return;
   }
 
-  // Can't split - start new page and retry
+  // Can't split on current page - start new page and retry splitting
   startNewPage(state);
 
-  // Retry adding the element
+  // Try to split again on fresh page
+  if (tag === 'table') {
+    const didSplit = trySplitTable(element as HTMLTableElement, state);
+    if (didSplit) return;
+  } else if (isSplittable(element)) {
+    const didSplit = trySplitContainer(element, state);
+    if (didSplit) return;
+  }
+
+  // Still can't split - add whole element
   const newTarget = getCurrentTarget(state);
   const newClone = element.cloneNode(true) as HTMLElement;
   newTarget.appendChild(newClone);
@@ -691,6 +700,8 @@ function trySplitContainer(element: HTMLElement, state: PaginationState): boolea
   const isList = tag === 'ul' || tag === 'ol';
   const minItemHeight = 70; // Minimum height for a single item to be left alone
 
+  console.log(`[Container] Start split <${tag}> with ${children.length} children`);
+
   const target = getCurrentTarget(state);
 
   // Create empty container
@@ -703,7 +714,8 @@ function trySplitContainer(element: HTMLElement, state: PaginationState): boolea
   let fittedCount = 0;
   const fittedElements: HTMLElement[] = []; // Track fitted elements for height check
 
-  for (const child of children) {
+  for (let idx = 0; idx < children.length; idx++) {
+    const child = children[idx];
     const childTag = child.tagName.toLowerCase();
 
     // For nested lists: don't clone whole thing, recurse
@@ -717,13 +729,13 @@ function trySplitContainer(element: HTMLElement, state: PaginationState): boolea
           state.ancestorStack.pop();
           return false;
         }
-        // Start new page and continue
-        state.ancestorStack.pop();
-        startNewPage(state);
+        // Start new page and continue - keep container in stack for reopening
         const remainingFromCurrent = children.slice(children.indexOf(child));
+        startNewPage(state);
         for (const remaining of remainingFromCurrent) {
           processElement(remaining, state);
         }
+        state.ancestorStack.pop();
         return true;
       }
       fittedCount++;
@@ -756,12 +768,13 @@ function trySplitContainer(element: HTMLElement, state: PaginationState): boolea
           state.ancestorStack.pop();
           return false;
         }
-        state.ancestorStack.pop();
-        startNewPage(state);
+        // Keep container in stack for reopening
         const remainingFromCurrent = children.slice(children.indexOf(child));
+        startNewPage(state);
         for (const remaining of remainingFromCurrent) {
           processElement(remaining, state);
         }
+        state.ancestorStack.pop();
         return true;
       }
 
@@ -782,9 +795,14 @@ function trySplitContainer(element: HTMLElement, state: PaginationState): boolea
     childClone = child.cloneNode(true) as HTMLElement;
     container.appendChild(childClone);
 
-    if (state.measureBox.scrollHeight > state.maxHeight) {
+    const childText = (child.textContent || '').trim().slice(0, 40);
+    const scrollHeight = state.measureBox.scrollHeight;
+    console.log(`[Container] Child ${idx}/${children.length} <${childTag}>: "${childText}..." | height=${scrollHeight}/${state.maxHeight} | overflow=${scrollHeight > state.maxHeight}`);
+
+    if (scrollHeight > state.maxHeight) {
       // This child caused overflow
       childClone.remove();
+      console.log(`[Container] Child ${idx} removed, fittedCount=${fittedCount}`);
 
       // For lists: check if we'd leave too few items
       if (isList && fittedCount > 0) {
@@ -833,14 +851,18 @@ function trySplitContainer(element: HTMLElement, state: PaginationState): boolea
       }
 
       // Some children fit - start new page for rest
-      state.ancestorStack.pop();
+      // DON'T pop ancestor stack yet - let startNewPage reopen the container on new page
+      const remainingFromCurrent = children.slice(idx);
+      console.log(`[Container] ✂️ SPLIT: fitted=${fittedCount}, remaining=${remainingFromCurrent.length} children to next page`);
       startNewPage(state);
 
-      // Process remaining children (including current)
-      const remainingFromCurrent = children.slice(children.indexOf(child));
+      // Now process remaining children INSIDE the reopened container
       for (const remaining of remainingFromCurrent) {
         processElement(remaining, state);
       }
+
+      // Pop after processing (the reopened container, not original)
+      state.ancestorStack.pop();
       return true;
     }
 
@@ -849,6 +871,7 @@ function trySplitContainer(element: HTMLElement, state: PaginationState): boolea
   }
 
   // All children fit
+  console.log(`[Container] ✅ All ${fittedCount} children fit`);
   state.ancestorStack.pop();
   return true;
 }
